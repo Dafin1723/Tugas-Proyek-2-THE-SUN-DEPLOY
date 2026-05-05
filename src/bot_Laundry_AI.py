@@ -26,9 +26,9 @@ from groq import Groq
 # CONFIG
 # ==============================
 
-TOKEN = "YOUR_TOKEN"
-GROQ_API_KEY = "YOUR_API_KEY"
-ADMIN_ID = 123456789
+TOKEN = "TOKEN_BOT_TELEGRAM_KAMU"
+GROQ_API_KEY = "GROQ_API_KEY"  # Ambil dari .env
+ADMIN_ID = 8028474070
 
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -74,7 +74,28 @@ def ask_ai(text):
         messages=[
             {
                 "role": "system",
-                "content": "Kamu adalah CS laundry profesional."
+                "content": """
+Kamu adalah customer service laundry profesional.
+
+ATURAN:
+- Hanya jawab sesuai layanan berikut:
+  - Express (Rp9000/kg)
+  - Reguler (Rp6500/kg)
+  - Setrika (Rp3000/kg)
+- Tidak melayani sepatu, tas, dll
+- Jika ditanya di luar layanan → tolak dengan sopan
+
+GAYA:
+- Santai tapi profesional
+- Singkat
+- Selalu arahkan ke aksi (order / cek status)
+
+CONTOH:
+User: "laundry sepatu bisa?"
+Jawab:
+"Maaf, saat ini kami hanya melayani laundry pakaian ya 😊
+Silakan pilih layanan di menu untuk mulai order."
+"""
             },
             {
                 "role": "user",
@@ -101,15 +122,31 @@ def admin_keyboard():
         ["📊 Lihat Order"],
         ["🏠 Menu"]
     ], resize_keyboard=True)
-  
+
 # ==============================
 # START
 # ==============================
 
 def start(update: Update, context: CallbackContext):
+
     update.message.reply_text(
         "👋 Selamat datang di Bot Laundry",
         reply_markup=user_menu()
+    )
+
+# ==============================
+# ADMIN COMMAND
+# ==============================
+
+def admin_command(update: Update, context: CallbackContext):
+
+    if update.message.from_user.id != ADMIN_ID:
+        update.message.reply_text("❌ Bukan admin")
+        return
+
+    update.message.reply_text(
+        "👑 ADMIN PANEL",
+        reply_markup=admin_keyboard()
     )
 
 # ==============================
@@ -196,50 +233,3 @@ def alamat_maps(update: Update, context: CallbackContext):
 ✅ ORDER BERHASIL
 
 Kode: {kode}
-Layanan: {layanan}
-
-📍 {link_maps}
-""")
-
-    context.bot.send_message(ADMIN_ID, f"""
-🔔 ORDER BARU
-
-Kode: {kode}
-Nama: {user.first_name}
-Layanan: {layanan}
-
-📍 {link_maps}
-""")
-
-    context.user_data.clear()
-
-# ==============================
-# AI SYSTEM + CEK
-# ==============================
-
-def ai_panel(update: Update, context: CallbackContext):
-
-    query = update.callback_query
-    query.answer()
-
-    keyboard = [
-        [InlineKeyboardButton("🟢 Aktifkan AI", callback_data="ai_on")],
-        [InlineKeyboardButton("🔴 Matikan AI", callback_data="ai_off")]
-    ]
-
-    query.message.reply_text(
-        "🤖 AI Laundry",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-def ai_on(update: Update, context: CallbackContext):
-    context.user_data["ai"] = True
-    update.callback_query.message.reply_text("AI aktif")
-
-def ai_off(update: Update, context: CallbackContext):
-    context.user_data["ai"] = False
-    update.callback_query.message.reply_text("AI mati")
-
-def cek_status(update: Update, context: CallbackContext):
-    context.user_data["cek"] = True
-    update.callback_query.message.reply_text("Masukkan kode order")
