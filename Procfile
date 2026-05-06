@@ -1,1 +1,1 @@
-worker: python src/main.py
+worker: python src/bot_Laundry_AI.py
