@@ -2,6 +2,8 @@ import logging
 import sqlite3
 import random
 import os
+import traceback
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -32,15 +34,50 @@ load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-ADMIN_ID = 8028474070
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))  # FIX: dari .env, bukan hardcode
 
 if not TOKEN:
     raise ValueError("❌ TOKEN belum diset")
 
+# ==============================
+# LOGGING SETUP (Syarat DevOps)
+# ==============================
+
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("error_log.txt"),   # Catat ke file
+        logging.StreamHandler()                  # Tampil di terminal
+    ]
 )
+
+logger = logging.getLogger(__name__)
+
+# ==============================
+# CRASH REPORTING (Syarat DevOps)
+# ==============================
+
+def kirim_notif_admin(pesan_error: str):
+    """Kirim notifikasi ke Telegram admin saat terjadi error fatal."""
+    if not TOKEN or not ADMIN_ID:
+        return
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    teks = f"🚨 *ERROR FATAL TERDETEKSI*\n\n```{pesan_error[:500]}```"
+    try:
+        requests.post(url, json={
+            "chat_id": ADMIN_ID,
+            "text": teks,
+            "parse_mode": "Markdown"
+        }, timeout=10)
+    except Exception:
+        pass  # Jangan crash lagi karena notif gagal
+
+def error_handler(update: object, context: CallbackContext):
+    """Handler global untuk semua error yang tidak tertangkap."""
+    error_detail = traceback.format_exc()
+    logger.error(f"Exception saat handle update: {context.error}\n{error_detail}")
+    kirim_notif_admin(error_detail)
 
 # ==============================
 # DATABASE
@@ -72,13 +109,17 @@ conn.commit()
 # UTIL
 # ==============================
 
+def generate_kode():
+    """FIX: Fungsi ini sebelumnya tidak ada, menyebabkan crash saat order."""
+    return "SUN" + str(random.randint(1000, 9999))
+
 def ask_ai(text):
     if not GROQ_API_KEY:
         return "❌ AI tidak tersedia"
 
     if "sepatu" in text.lower() or "tas" in text.lower():
         return "Maaf, kami hanya melayani laundry pakaian ya 😊"
-    
+
     try:
         client = Groq(api_key=GROQ_API_KEY)
 
@@ -125,8 +166,6 @@ User: "berapa lama selesai?"
 Jawab:
 "Express lebih cepat dari reguler ya 😊
 Mau pilih layanan sekarang?"
-
-
 """
                 },
                 {
@@ -139,7 +178,7 @@ Mau pilih layanan sekarang?"
         return response.choices[0].message.content
 
     except Exception as e:
-        logging.error(e)
+        logger.error(f"Groq AI error: {e}")
         return "❌ AI sedang error"
 
 # ==============================
@@ -164,7 +203,6 @@ def admin_keyboard():
 # ==============================
 
 def start(update: Update, context: CallbackContext):
-
     update.message.reply_text(
         "👋 Selamat datang di Bot Laundry",
         reply_markup=user_menu()
@@ -175,7 +213,6 @@ def start(update: Update, context: CallbackContext):
 # ==============================
 
 def admin_command(update: Update, context: CallbackContext):
-
     if update.message.from_user.id != ADMIN_ID:
         update.message.reply_text("❌ Bukan admin")
         return
@@ -190,7 +227,6 @@ def admin_command(update: Update, context: CallbackContext):
 # ==============================
 
 def order(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
@@ -206,7 +242,6 @@ def order(update: Update, context: CallbackContext):
     )
 
 def pilih_layanan(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
@@ -232,7 +267,6 @@ def pilih_layanan(update: Update, context: CallbackContext):
 # ==============================
 
 def alamat_maps(update: Update, context: CallbackContext):
-
     if "layanan" not in context.user_data:
         return
 
@@ -291,7 +325,6 @@ Layanan: {layanan}
 # ==============================
 
 def list_order(update: Update, context: CallbackContext):
-
     cursor.execute("""
     SELECT kode,nama,status
     FROM orders
@@ -321,12 +354,10 @@ def list_order(update: Update, context: CallbackContext):
     )
 
 def pilih_order(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
     kode = query.data.replace("pilih_", "")
-
     context.user_data["kode"] = kode
 
     keyboard = [
@@ -343,7 +374,6 @@ def pilih_order(update: Update, context: CallbackContext):
     )
 
 def aksi_admin(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
@@ -360,13 +390,8 @@ def aksi_admin(update: Update, context: CallbackContext):
         return
 
     if data == "aksi_timbang":
-
         context.user_data["berat"] = True
-
-        query.message.reply_text(
-            "Masukkan berat laundry (kg)"
-        )
-
+        query.message.reply_text("Masukkan berat laundry (kg)")
         return
 
     status_map = {
@@ -406,7 +431,6 @@ Status: {status}
 # ==============================
 
 def ai_panel(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
@@ -421,7 +445,6 @@ def ai_panel(update: Update, context: CallbackContext):
     )
 
 def ai_on(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
@@ -432,7 +455,6 @@ def ai_on(update: Update, context: CallbackContext):
     )
 
 def ai_off(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
@@ -445,22 +467,18 @@ def ai_off(update: Update, context: CallbackContext):
 # ==============================
 
 def cek_status(update: Update, context: CallbackContext):
-
     query = update.callback_query
     query.answer()
 
     context.user_data["cek"] = True
 
-    query.message.reply_text(
-        "Masukkan kode order"
-    )
+    query.message.reply_text("Masukkan kode order")
 
 # ==============================
 # HANDLE TEXT
 # ==============================
 
 def handle_text(update: Update, context: CallbackContext):
-
     text = update.message.text
     user = update.message.from_user
 
@@ -473,14 +491,11 @@ def handle_text(update: Update, context: CallbackContext):
         return
 
     if text == "🏠 Menu":
-
         context.user_data.clear()
-
         update.message.reply_text(
             "🏠 Menu utama",
             reply_markup=user_menu()
         )
-
         return
 
     # ==============================
@@ -491,11 +506,8 @@ def handle_text(update: Update, context: CallbackContext):
 
         try:
             berat = float(text.replace(",", "."))
-
-        except:
-            update.message.reply_text(
-                "❌ Masukkan angka"
-            )
+        except Exception:
+            update.message.reply_text("❌ Masukkan angka")
             return
 
         kode = context.user_data["kode"]
@@ -506,14 +518,18 @@ def handle_text(update: Update, context: CallbackContext):
         WHERE kode=?
         """, (kode,))
 
-    layanan, user_id = cursor.fetchone()
+        # FIX: indentasi diperbaiki, sebelumnya di luar blok if
+        row = cursor.fetchone()
+        if not row:
+            update.message.reply_text("❌ Order tidak ditemukan")
+            return
+
+        layanan, user_id = row
 
         if layanan == "express":
             harga = berat * 9000
-
         elif layanan == "reguler":
             harga = berat * 6500
-
         else:
             harga = berat * 3000
 
@@ -543,7 +559,6 @@ Total: Rp{int(harga)}
         )
 
         context.user_data.clear()
-
         return
 
     # ==============================
@@ -561,11 +576,7 @@ Total: Rp{int(harga)}
         data = cursor.fetchone()
 
         if not data:
-
-            update.message.reply_text(
-                "❌ Kode tidak ditemukan"
-            )
-
+            update.message.reply_text("❌ Kode tidak ditemukan")
             return
 
         kode, status, layanan, harga = data
@@ -582,9 +593,7 @@ Status: {status}
             msg += f"\nTotal: Rp{int(harga)}"
 
         update.message.reply_text(msg)
-
         context.user_data.clear()
-
         return
 
     # ==============================
@@ -634,7 +643,6 @@ Layanan: {context.user_data["layanan"]}
 """)
 
         context.user_data.clear()
-
         return
 
     # ==============================
@@ -644,17 +652,12 @@ Layanan: {context.user_data["layanan"]}
     if context.user_data.get("ai"):
 
         try:
-
             jawab = ask_ai(text)
-
             update.message.reply_text(jawab)
 
         except Exception as e:
-
-            print(e)
-
+            logger.error(f"AI chat error: {e}")
             update.message.reply_text("❌ AI error")
-            return
 
 # ==============================
 # MAIN
@@ -669,55 +672,55 @@ def main():
     dp.add_handler(CommandHandler("admin", admin_command))
 
     dp.add_handler(
-        CallbackQueryHandler(order, pattern="order")
-    )s
+        CallbackQueryHandler(order, pattern="^order$")   # FIX: pattern lebih spesifik
+    )
 
     dp.add_handler(
         CallbackQueryHandler(
             pilih_layanan,
-            pattern="express|reguler|setrika"
+            pattern="^(express|reguler|setrika)$"
         )
     )
 
     dp.add_handler(
         CallbackQueryHandler(
             cek_status,
-            pattern="cek"
+            pattern="^cek$"
         )
     )
 
     dp.add_handler(
         CallbackQueryHandler(
             ai_panel,
-            pattern="ai_menu"
+            pattern="^ai_menu$"
         )
     )
 
     dp.add_handler(
         CallbackQueryHandler(
             ai_on,
-            pattern="ai_on"
+            pattern="^ai_on$"
         )
     )
 
     dp.add_handler(
         CallbackQueryHandler(
             ai_off,
-            pattern="ai_off"
+            pattern="^ai_off$"
         )
     )
 
     dp.add_handler(
         CallbackQueryHandler(
             pilih_order,
-            pattern="pilih_"
+            pattern="^pilih_"
         )
     )
 
     dp.add_handler(
         CallbackQueryHandler(
             aksi_admin,
-            pattern="aksi_|kembali"
+            pattern="^(aksi_|kembali)"
         )
     )
 
@@ -735,7 +738,11 @@ def main():
         )
     )
 
+    # Daftarkan error handler (Syarat DevOps: crash reporting)
+    dp.add_error_handler(error_handler)
+
     updater.start_polling()
+    logger.info("BOT RUNNING...")
     print("BOT RUNNING...")
     updater.idle()
 
