@@ -1,7 +1,9 @@
 import logging
 import sqlite3
 import random
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 
 from telegram import (
     Update,
@@ -26,13 +28,19 @@ from groq import Groq
 # CONFIG
 # ==============================
 
-TOKEN = "TOKEN_BOT_TELEGRAM_KAMU"
-GROQ_API_KEY = "GROQ_API_KEY"  # Ambil dari .env
+load_dotenv()
+
+TOKEN = os.getenv("TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 ADMIN_ID = 8028474070
 
-client = Groq(api_key=GROQ_API_KEY)
+if not TOKEN:
+    raise ValueError("❌ TOKEN belum diset")
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 # ==============================
 # DATABASE
@@ -64,47 +72,75 @@ conn.commit()
 # UTIL
 # ==============================
 
-def generate_kode():
-    return f"LDR-{random.randint(10000,99999)}"
-
 def ask_ai(text):
+    if not GROQ_API_KEY:
+        return "❌ AI tidak tersedia"
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "system",
-                "content": """
+    if "sepatu" in text.lower() or "tas" in text.lower():
+        return "Maaf, kami hanya melayani laundry pakaian ya 😊"
+    
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """
 Kamu adalah customer service laundry profesional.
+TUGAS:
+- Membantu pelanggan terkait layanan laundry
+- Menjawab pertanyaan dengan jelas & singkat
+- Mengarahkan user untuk melakukan order atau cek status
+
+LAYANAN:
+- Express (Rp9000/kg) → cepat
+- Reguler (Rp6500/kg) → normal
+- Setrika (Rp3000/kg)
 
 ATURAN:
-- Hanya jawab sesuai layanan berikut:
-  - Express (Rp9000/kg)
-  - Reguler (Rp6500/kg)
-  - Setrika (Rp3000/kg)
-- Tidak melayani sepatu, tas, dll
-- Jika ditanya di luar layanan → tolak dengan sopan
+- HANYA bahas laundry pakaian
+- Tolak sepatu, tas, dll
+- Jangan jawab di luar topik laundry
 
 GAYA:
-- Santai tapi profesional
-- Singkat
+- Santai tapi sopan
+- Singkat (max 2-3 kalimat)
 - Selalu arahkan ke aksi (order / cek status)
 
 CONTOH:
+User: "berapa harga laundry?"
+Jawab:
+"Kami ada 3 layanan:
+Express Rp9000/kg, Reguler Rp6500/kg, dan Setrika Rp3000/kg 😊
+Mau langsung order?"
+
 User: "laundry sepatu bisa?"
 Jawab:
-"Maaf, saat ini kami hanya melayani laundry pakaian ya 😊
+"Maaf, kami hanya melayani laundry pakaian ya 😊
 Silakan pilih layanan di menu untuk mulai order."
-"""
-            },
-            {
-                "role": "user",
-                "content": text
-            }
-        ]
-    )
 
-    return response.choices[0].message.content
+User: "berapa lama selesai?"
+Jawab:
+"Express lebih cepat dari reguler ya 😊
+Mau pilih layanan sekarang?"
+
+
+"""
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ]
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        logging.error(e)
+        return "❌ AI sedang error"
 
 # ==============================
 # KEYBOARD
