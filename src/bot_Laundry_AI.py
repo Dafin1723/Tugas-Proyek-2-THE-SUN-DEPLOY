@@ -505,3 +505,239 @@ def handle_text(update: Update, context: CallbackContext):
         FROM orders
         WHERE kode=?
         """, (kode,))
+
+    layanan, user_id = cursor.fetchone()
+
+        if layanan == "express":
+            harga = berat * 9000
+
+        elif layanan == "reguler":
+            harga = berat * 6500
+
+        else:
+            harga = berat * 3000
+
+        cursor.execute("""
+        UPDATE orders
+        SET berat=?, harga=?, status=?
+        WHERE kode=?
+        """, (
+            berat,
+            harga,
+            "⚖️ Ditimbang",
+            kode
+        ))
+
+        conn.commit()
+
+        context.bot.send_message(user_id, f"""
+📦 Laundry ditimbang
+
+Berat: {berat} kg
+Total: Rp{int(harga)}
+""")
+
+        update.message.reply_text(
+            "✅ Berhasil ditimbang",
+            reply_markup=admin_keyboard()
+        )
+
+        context.user_data.clear()
+
+        return
+
+    # ==============================
+    # INPUT KODE CEK
+    # ==============================
+
+    if context.user_data.get("cek"):
+
+        cursor.execute("""
+        SELECT kode,status,layanan,harga
+        FROM orders
+        WHERE kode=?
+        """, (text,))
+
+        data = cursor.fetchone()
+
+        if not data:
+
+            update.message.reply_text(
+                "❌ Kode tidak ditemukan"
+            )
+
+            return
+
+        kode, status, layanan, harga = data
+
+        msg = f"""
+📦 STATUS LAUNDRY
+
+Kode: {kode}
+Layanan: {layanan}
+Status: {status}
+"""
+
+        if harga:
+            msg += f"\nTotal: Rp{int(harga)}"
+
+        update.message.reply_text(msg)
+
+        context.user_data.clear()
+
+        return
+
+    # ==============================
+    # INPUT ALAMAT MANUAL
+    # ==============================
+
+    if "layanan" in context.user_data:
+
+        kode = generate_kode()
+
+        cursor.execute("""
+        INSERT INTO orders(
+        kode,user_id,nama,layanan,
+        alamat,status,tanggal
+        )
+        VALUES(?,?,?,?,?,?,?)
+        """, (
+            kode,
+            user.id,
+            user.first_name,
+            context.user_data["layanan"],
+            text,
+            "🚚 Menunggu dijemput",
+            datetime.now().strftime("%d-%m-%Y")
+        ))
+
+        conn.commit()
+
+        update.message.reply_text(f"""
+✅ ORDER BERHASIL
+
+Kode: {kode}
+
+📍 Alamat:
+{text}
+""")
+
+        context.bot.send_message(ADMIN_ID, f"""
+🔔 ORDER BARU
+
+Kode: {kode}
+Nama: {user.first_name}
+Layanan: {context.user_data["layanan"]}
+
+📍 Alamat:
+{text}
+""")
+
+        context.user_data.clear()
+
+        return
+
+    # ==============================
+    # AI CHAT
+    # ==============================
+
+    if context.user_data.get("ai"):
+
+        try:
+
+            jawab = ask_ai(text)
+
+            update.message.reply_text(jawab)
+
+        except Exception as e:
+
+            print(e)
+
+            update.message.reply_text("❌ AI error")
+            return
+
+# ==============================
+# MAIN
+# ==============================
+
+def main():
+
+    updater = Updater(TOKEN)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("admin", admin_command))
+
+    dp.add_handler(
+        CallbackQueryHandler(order, pattern="order")
+    )s
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            pilih_layanan,
+            pattern="express|reguler|setrika"
+        )
+    )
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            cek_status,
+            pattern="cek"
+        )
+    )
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            ai_panel,
+            pattern="ai_menu"
+        )
+    )
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            ai_on,
+            pattern="ai_on"
+        )
+    )
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            ai_off,
+            pattern="ai_off"
+        )
+    )
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            pilih_order,
+            pattern="pilih_"
+        )
+    )
+
+    dp.add_handler(
+        CallbackQueryHandler(
+            aksi_admin,
+            pattern="aksi_|kembali"
+        )
+    )
+
+    dp.add_handler(
+        MessageHandler(
+            Filters.location,
+            alamat_maps
+        )
+    )
+
+    dp.add_handler(
+        MessageHandler(
+            Filters.text & ~Filters.command,
+            handle_text
+        )
+    )
+
+    updater.start_polling()
+    print("BOT RUNNING...")
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
