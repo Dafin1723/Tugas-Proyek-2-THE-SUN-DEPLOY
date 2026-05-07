@@ -20,9 +20,10 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
-    Filters,
     CallbackContext
 )
+
+from telegram import filters
 
 from groq import Groq
 
@@ -726,14 +727,14 @@ def main():
 
     dp.add_handler(
         MessageHandler(
-            Filters.location,
+            filters.LOCATION,
             alamat_maps
         )
     )
 
     dp.add_handler(
         MessageHandler(
-            Filters.text & ~Filters.command,
+            filters.TEXT & ~filters.COMMAND,
             handle_text
         )
     )
