@@ -1,4 +1,4 @@
 python-telegram-bot==13.15
-groq
+groq==1.2.0
 python-dotenv
 requests
